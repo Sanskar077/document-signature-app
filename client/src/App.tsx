@@ -6,6 +6,7 @@ import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import PDFPreview from "./pages/PDFPreview";
 import SignaturePlacement from "./pages/SignaturePlacement";
+import PublicSign from "./pages/PublicSign";
 
 function App() {
   return (
@@ -13,10 +14,14 @@ function App() {
       <Routes>
         {/* Home */}
         <Route path="/" element={<Home />} />
-
+        
         {/* Authentication */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route
+          path="/public-sign/:token"
+          element={<PublicSign />}
+        />
 
         {/* Dashboard */}
         <Route path="/dashboard" element={<Dashboard />} />
