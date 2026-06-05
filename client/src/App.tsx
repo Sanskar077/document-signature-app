@@ -5,6 +5,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import PDFPreview from "./pages/PDFPreview";
+import SignaturePlacement from "./pages/SignaturePlacement";
 
 function App() {
   return (
@@ -24,6 +25,12 @@ function App() {
         <Route
           path="/preview/:id"
           element={<PDFPreview />}
+        />
+
+        {/* Signature Placement */}
+        <Route
+          path="/sign/:id"
+          element={<SignaturePlacement />}
         />
       </Routes>
     </BrowserRouter>
