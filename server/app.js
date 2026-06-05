@@ -6,12 +6,18 @@ const documentRoutes = require("./routes/documentRoutes");
 const protect = require("./middleware/authMiddleware");
 const signatureRoutes = require("./routes/signatureRoutes");
 const app = express();
-
+const publicSignatureRoutes =
+  require(
+    "./routes/publicSignatureRoutes"
+  );
 // Core Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
+app.use(
+  "/api/public-sign",
+  publicSignatureRoutes
+);
 app.use("/api/signatures", signatureRoutes);
 
 // Serve uploaded files
