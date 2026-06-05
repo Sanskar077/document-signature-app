@@ -1,5 +1,11 @@
 const Document = require("../models/Document");
+const Signature = require("../models/Signature");
+const path = require("path");
+const fs = require("fs");
 
+const {
+  generateSignedPdf,
+} = require("../utils/pdfSigner");
 // Upload Document
 exports.uploadDocument = async (req, res) => {
   try {
@@ -86,3 +92,77 @@ exports.getDocumentById = async (req, res) => {
     });
   }
 };
+exports.finalizeDocument =
+  async (req, res) => {
+    try {
+      const document =
+        await Document.findById(
+          req.params.id
+        );
+
+      if (!document) {
+        return res.status(404).json({
+          success: false,
+          message:
+            "Document not found",
+        });
+      }
+
+      const signatures =
+        await Signature.find({
+          documentId: document._id,
+        });
+
+      if (
+        signatures.length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "No signatures found",
+        });
+      }
+
+      const signedDir =
+        path.join(
+          __dirname,
+          "../signed"
+        );
+
+      if (
+        !fs.existsSync(signedDir)
+      ) {
+        fs.mkdirSync(
+          signedDir
+        );
+      }
+
+      const outputPath =
+        path.join(
+          signedDir,
+          `signed-${document.fileName}`
+        );
+
+      await generateSignedPdf(
+        document.filePath,
+        outputPath,
+        signatures
+      );
+
+      res.status(200).json({
+        success: true,
+        message:
+          "Signed PDF generated",
+        downloadPath:
+          outputPath,
+      });
+    } catch (error) {
+      console.error(error);
+
+      res.status(500).json({
+        success: false,
+        message:
+          error.message,
+      });
+    }
+  };

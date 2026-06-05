@@ -7,6 +7,7 @@ const {
   uploadDocument,
   getUserDocuments,
   getDocumentById,
+  finalizeDocument,
 } = require("../controllers/documentController");
 
 const router = express.Router();
@@ -20,6 +21,11 @@ router.post(
 
 router.get("/", protect, getUserDocuments);
 
-router.get("/:id", protect, getDocumentById);
+router.post(
+  "/:id/finalize",
+  protect,
+  finalizeDocument
+);
 
+router.get("/:id", protect, getDocumentById);
 module.exports = router;
