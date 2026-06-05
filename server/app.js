@@ -4,13 +4,15 @@ const cors = require("cors");
 const authRoutes = require("./routes/authRoutes");
 const documentRoutes = require("./routes/documentRoutes");
 const protect = require("./middleware/authMiddleware");
-
+const signatureRoutes = require("./routes/signatureRoutes");
 const app = express();
 
 // Core Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+app.use("/api/signatures", signatureRoutes);
 
 // Serve uploaded files
 app.use("/uploads", express.static("uploads"));
