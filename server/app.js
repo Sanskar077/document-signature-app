@@ -2,14 +2,18 @@ const express = require("express");
 const cors = require("cors");
 
 const authRoutes = require("./routes/authRoutes");
+const documentRoutes = require("./routes/documentRoutes");
 const protect = require("./middleware/authMiddleware");
 
 const app = express();
 
-// Middleware
+// Core Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve uploaded files
+app.use("/uploads", express.static("uploads"));
 
 // Home Route
 app.get("/", (req, res) => {
@@ -22,7 +26,10 @@ app.get("/", (req, res) => {
 // Auth Routes
 app.use("/api/auth", authRoutes);
 
-// Protected Route (Day 2 Testing)
+// Document Routes
+app.use("/api/docs", documentRoutes);
+
+// Temporary Protected Route (JWT Test)
 app.get("/api/protected", protect, (req, res) => {
   res.status(200).json({
     success: true,
@@ -31,7 +38,7 @@ app.get("/api/protected", protect, (req, res) => {
   });
 });
 
-// 404 Route
+// 404 Handler
 app.use((req, res) => {
   res.status(404).json({
     success: false,
