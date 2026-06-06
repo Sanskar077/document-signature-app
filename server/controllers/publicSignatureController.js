@@ -32,9 +32,23 @@ exports.generateLink = async (req, res) => {
               1000
         ),
       });
+    
+    const existingSignature =
+  await Signature.findOne({
+    documentId: link.documentId,
+  });
+
+if (existingSignature) {
+  return res.status(400).json({
+    success: false,
+    message:
+      "Signature already exists for this document",
+  });
+}
 
     const publicUrl =
-      `http://localhost:5173/public-sign/${link.token}`;
+      `http://localhost:5174/public-sign/${link.token}`;
+    
 
     console.log(
       "\n========== MOCK EMAIL =========="
@@ -119,6 +133,70 @@ exports.validateLink = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message,
+    });
+  }
+};
+
+exports.savePublicSignature = async (
+  req,
+  res
+) => {
+  try {
+    const { token } = req.params;
+
+    const { x, y, page } = req.body;
+
+    const link =
+      await SignatureLink.findOne({
+        token,
+      });
+
+    if (!link) {
+      return res.status(404).json({
+        success: false,
+        message: "Invalid link",
+      });
+    }
+
+    const Signature = require(
+      "../models/Signature"
+    );
+
+    // Prevent duplicate public signatures
+    const existingSignature =
+      await Signature.findOne({
+        documentId:
+          link.documentId,
+        userId: null,
+      });
+
+    if (existingSignature) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Signature already exists for this document",
+      });
+    }
+
+    const signature =
+      await Signature.create({
+        documentId:
+          link.documentId,
+        userId: null,
+        x,
+        y,
+        page,
+      });
+
+    res.status(201).json({
+      success: true,
+      signature,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message:
+        error.message,
     });
   }
 };
