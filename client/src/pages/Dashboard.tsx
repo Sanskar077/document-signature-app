@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import axios from "axios";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import Navbar from "../components/Navbar";
 import StatusBadge from "../components/StatusBadge";
 import LoadingSpinner from "../components/LoadingSpinner";
+
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 type DocumentType = {
   _id: string;
@@ -31,7 +33,6 @@ function formatDate(iso: string) {
 
 export default function Dashboard() {
   const { token, user } = useAuth();
-  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [documents, setDocuments] = useState<DocumentType[]>([]);
@@ -42,19 +43,18 @@ export default function Dashboard() {
   const [dragOver, setDragOver] = useState(false);
   const [shareLoadingId, setShareLoadingId] = useState<string | null>(null);
   const [shareLinks, setShareLinks] = useState<Record<string, string>>({});
+  const [finalizeLoadingId, setFinalizeLoadingId] = useState<string | null>(null);
+  const [finalizeResult, setFinalizeResult] = useState<Record<string, string>>({});
 
   const authHeader = { Authorization: `Bearer ${token}` };
 
   useEffect(() => {
     fetchDocuments();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchDocuments = async () => {
     try {
-      const res = await axios.get("http://localhost:5000/api/docs", {
-        headers: authHeader,
-      });
+      const res = await axios.get(`${API_BASE}/api/docs`, { headers: authHeader });
       setDocuments(res.data.documents);
     } catch {
       /* handled silently */
@@ -82,7 +82,7 @@ export default function Dashboard() {
     form.append("document", file);
 
     try {
-      await axios.post("http://localhost:5000/api/docs/upload", form, {
+      await axios.post(`${API_BASE}/api/docs/upload`, form, {
         headers: { ...authHeader, "Content-Type": "multipart/form-data" },
       });
       setUploadSuccess(`"${file.name}" uploaded successfully!`);
@@ -111,7 +111,7 @@ export default function Dashboard() {
     setShareLoadingId(docId);
     try {
       const res = await axios.post(
-        `http://localhost:5000/api/public-sign/${docId}`,
+        `${API_BASE}/api/public-sign/${docId}`,
         {},
         { headers: authHeader }
       );
@@ -125,28 +125,34 @@ export default function Dashboard() {
   };
 
   const handleFinalize = async (docId: string) => {
+    setFinalizeLoadingId(docId);
     try {
-      await axios.post(
-        `http://localhost:5000/api/docs/${docId}/finalize`,
+      const res = await axios.post(
+        `${API_BASE}/api/docs/${docId}/finalize`,
         {},
         { headers: authHeader }
       );
-      alert("Signed PDF generated successfully!");
+      const downloadPath = res.data.downloadPath as string;
+      setFinalizeResult((prev) => ({ ...prev, [docId]: `${API_BASE}${downloadPath}` }));
       await fetchDocuments();
-    } catch {
-      alert("Finalize failed. Make sure a signature exists first.");
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } })?.response?.data
+          ?.message ?? "Finalize failed. Make sure a signature exists first.";
+      alert(msg);
+    } finally {
+      setFinalizeLoadingId(null);
     }
   };
 
-  /* Stats */
   const total = documents.length;
   const pending = documents.filter((d) => d.status === "pending").length;
   const signed = documents.filter((d) => d.status === "signed").length;
 
   const STATS = [
-    { label: "Total Documents", value: total, sub: "Uploaded" },
-    { label: "Pending Signature", value: pending, sub: "Awaiting action" },
-    { label: "Signed", value: signed, sub: "Completed" },
+    { label: "Total Documents", value: total, sub: "Uploaded", color: "var(--info)" },
+    { label: "Pending Signature", value: pending, sub: "Awaiting action", color: "var(--warning)" },
+    { label: "Signed", value: signed, sub: "Completed", color: "var(--success)" },
   ];
 
   return (
@@ -157,20 +163,22 @@ export default function Dashboard() {
 
           {/* Page header */}
           <div className="page-header">
-            <h1 className="page-title">
-              Welcome back{user?.name ? `, ${user.name.split(" ")[0]}` : ""} 👋
-            </h1>
-            <p className="page-subtitle">
-              Manage your documents, signatures, and sharing links.
-            </p>
+            <div>
+              <h1 className="page-title">
+                Welcome back{user?.name ? `, ${user.name.split(" ")[0]}` : ""}
+              </h1>
+              <p className="page-subtitle">
+                Manage your documents, signatures, and sharing links.
+              </p>
+            </div>
           </div>
 
           {/* Stats row */}
           <div className="stats-grid" style={{ marginBottom: "var(--space-8)" }}>
             {STATS.map((s) => (
-              <div className="stat-card" key={s.label}>
+              <div className="stat-card" key={s.label} style={{ borderTop: `2px solid ${s.color}` }}>
                 <p className="stat-label">{s.label}</p>
-                <p className="stat-value">{s.value}</p>
+                <p className="stat-value" style={{ color: s.color }}>{s.value}</p>
                 <p className="stat-sub">{s.sub}</p>
               </div>
             ))}
@@ -200,34 +208,19 @@ export default function Dashboard() {
                 onChange={handleFileChange}
                 id="file-input"
               />
-
               {uploading ? (
                 <LoadingSpinner text="Uploading…" />
               ) : (
                 <>
-                  <div className="upload-icon">
-                    {dragOver ? "📂" : "📤"}
-                  </div>
-                  <p className="upload-title">
-                    {dragOver
-                      ? "Drop your PDF here"
-                      : "Click to upload or drag & drop"}
-                  </p>
+                  <div className="upload-icon">{dragOver ? "📂" : "📤"}</div>
+                  <p className="upload-title">{dragOver ? "Drop your PDF here" : "Click to upload or drag & drop"}</p>
                   <p className="upload-desc">PDF documents only</p>
                 </>
               )}
             </div>
 
-            {uploadError && (
-              <div className="alert alert-error mt-4">
-                <span>⚠</span> {uploadError}
-              </div>
-            )}
-            {uploadSuccess && (
-              <div className="alert alert-success mt-4">
-                <span>✓</span> {uploadSuccess}
-              </div>
-            )}
+            {uploadError && <div className="alert alert-error mt-4"><span>⚠</span> {uploadError}</div>}
+            {uploadSuccess && <div className="alert alert-success mt-4"><span>✓</span> {uploadSuccess}</div>}
           </div>
 
           {/* Documents list */}
@@ -235,9 +228,7 @@ export default function Dashboard() {
             <div className="section-header">
               <div>
                 <h2 className="section-title">My Documents</h2>
-                <p className="section-desc">
-                  {total} document{total !== 1 ? "s" : ""} total
-                </p>
+                <p className="section-desc">{total} document{total !== 1 ? "s" : ""} total</p>
               </div>
             </div>
 
@@ -247,9 +238,7 @@ export default function Dashboard() {
               <div className="empty-state">
                 <div className="empty-icon">📁</div>
                 <p className="empty-title">No documents yet</p>
-                <p className="empty-desc">
-                  Upload your first PDF above to get started with signing.
-                </p>
+                <p className="empty-desc">Upload your first PDF above to get started with signing.</p>
               </div>
             ) : (
               <div className="doc-grid">
@@ -259,17 +248,13 @@ export default function Dashboard() {
                     <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-3)" }}>
                       <div className="doc-card-icon">📄</div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p className="doc-card-name" title={doc.originalName}>
-                          {doc.originalName}
-                        </p>
-                        <p className="doc-card-meta">
-                          {formatSize(doc.fileSize)} · {formatDate(doc.createdAt)}
-                        </p>
+                        <p className="doc-card-name" title={doc.originalName}>{doc.originalName}</p>
+                        <p className="doc-card-meta">{formatSize(doc.fileSize)} · {formatDate(doc.createdAt)}</p>
                       </div>
                       <StatusBadge status={doc.status} />
                     </div>
 
-                    {/* Actions */}
+                    {/* Primary actions */}
                     <div className="doc-card-actions">
                       <Link
                         to={`/preview/${doc._id}?file=${doc.fileName}`}
@@ -288,10 +273,15 @@ export default function Dashboard() {
                       <button
                         className="btn btn-secondary btn-sm"
                         onClick={() => handleFinalize(doc._id)}
+                        disabled={finalizeLoadingId === doc._id}
                         id={`finalize-btn-${doc._id}`}
                       >
-                        📥 Finalize
+                        {finalizeLoadingId === doc._id ? "…" : "📥 Finalize"}
                       </button>
+                    </div>
+
+                    {/* Secondary actions */}
+                    <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap" }}>
                       <button
                         className="btn btn-ghost btn-sm"
                         onClick={() => handleGenerateLink(doc._id)}
@@ -300,7 +290,46 @@ export default function Dashboard() {
                       >
                         {shareLoadingId === doc._id ? "…" : "🔗 Share"}
                       </button>
+                      <Link
+                        to={`/recipients/${doc._id}`}
+                        className="btn btn-ghost btn-sm"
+                        id={`recipients-btn-${doc._id}`}
+                      >
+                        👥 Recipients
+                      </Link>
+                      <Link
+                        to={`/audit/${doc._id}`}
+                        className="btn btn-ghost btn-sm"
+                        id={`audit-btn-${doc._id}`}
+                      >
+                        📋 Audit
+                      </Link>
                     </div>
+
+                    {/* Finalized PDF download */}
+                    {finalizeResult[doc._id] && (
+                      <div
+                        style={{
+                          background: "var(--success-light)",
+                          border: "1px solid rgba(16,185,129,0.3)",
+                          borderRadius: "var(--radius)",
+                          padding: "var(--space-3)",
+                        }}
+                      >
+                        <p style={{ fontSize: "0.78rem", color: "var(--success)", fontWeight: 600, marginBottom: "var(--space-2)" }}>
+                          ✓ Signed PDF ready
+                        </p>
+                        <a
+                          href={finalizeResult[doc._id]}
+                          download
+                          className="btn btn-primary btn-sm"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Download Signed PDF
+                        </a>
+                      </div>
+                    )}
 
                     {/* Share link display */}
                     {shareLinks[doc._id] && (
@@ -310,19 +339,9 @@ export default function Dashboard() {
                           border: "1px solid var(--border)",
                           borderRadius: "var(--radius)",
                           padding: "var(--space-3)",
-                          marginTop: "var(--space-2)",
                         }}
                       >
-                        <p
-                          style={{
-                            fontSize: "0.72rem",
-                            color: "var(--text-muted)",
-                            marginBottom: "var(--space-2)",
-                            fontWeight: 600,
-                            textTransform: "uppercase",
-                            letterSpacing: "0.06em",
-                          }}
-                        >
+                        <p style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginBottom: "var(--space-2)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>
                           Public Signing Link
                         </p>
                         <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
@@ -335,9 +354,7 @@ export default function Dashboard() {
                           />
                           <button
                             className="btn btn-primary btn-sm"
-                            onClick={() => {
-                              navigator.clipboard.writeText(shareLinks[doc._id]);
-                            }}
+                            onClick={() => navigator.clipboard.writeText(shareLinks[doc._id])}
                             id={`copy-link-btn-${doc._id}`}
                           >
                             Copy

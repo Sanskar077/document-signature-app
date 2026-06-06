@@ -9,6 +9,8 @@ import Dashboard from "./pages/Dashboard";
 import PDFPreview from "./pages/PDFPreview";
 import SignaturePlacement from "./pages/SignaturePlacement";
 import PublicSign from "./pages/PublicSign";
+import AuditTrail from "./pages/AuditTrail";
+import Recipients from "./pages/Recipients";
 
 function App() {
   return (
@@ -43,6 +45,22 @@ function App() {
             element={
               <ProtectedRoute>
                 <SignaturePlacement />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/audit/:id"
+            element={
+              <ProtectedRoute>
+                <AuditTrail />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/recipients/:id"
+            element={
+              <ProtectedRoute>
+                <Recipients />
               </ProtectedRoute>
             }
           />

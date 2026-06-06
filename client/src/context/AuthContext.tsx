@@ -7,7 +7,7 @@ import React, {
 } from "react";
 import axios from "axios";
 
-const API = "http://localhost:5000/api";
+const API = (import.meta.env.VITE_API_URL || "http://localhost:5000") + "/api";
 
 type User = {
   id: string;
@@ -31,7 +31,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  /* Rehydrate from localStorage on mount */
   useEffect(() => {
     const storedToken = localStorage.getItem("token");
     const storedUser = localStorage.getItem("user");
@@ -46,11 +45,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await axios.post(`${API}/auth/login`, { email, password });
     const { token: t } = res.data;
 
-    /* Decode basic payload from JWT (no sensitive info stored) */
     const payload = JSON.parse(atob(t.split(".")[1]));
     const me: User = { id: payload.id, name: payload.name ?? email, email };
 
-    /* Try fetching the user profile if name wasn't in token */
     try {
       const profileRes = await axios.get(`${API}/auth/me`, {
         headers: { Authorization: `Bearer ${t}` },
@@ -71,7 +68,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = async (name: string, email: string, password: string) => {
     await axios.post(`${API}/auth/register`, { name, email, password });
-    /* Auto-login after register */
     await login(email, password);
   };
 

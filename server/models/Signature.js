@@ -14,20 +14,9 @@ const signatureSchema = new mongoose.Schema(
       required: true,
     },
 
-    x: {
-      type: Number,
-      required: true,
-    },
-
-    y: {
-      type: Number,
-      required: true,
-    },
-
-    page: {
-      type: Number,
-      required: true,
-    },
+    x: { type: Number, required: true },
+    y: { type: Number, required: true },
+    page: { type: Number, required: true },
 
     status: {
       type: String,
@@ -35,21 +24,33 @@ const signatureSchema = new mongoose.Schema(
       default: "signed",
     },
 
-    // ── Extended fields (Day 12+) ──
+    // ── Signature type ──
     type: {
       type: String,
       enum: ["signature", "typed", "drawn", "initials", "stamp", "date", "text"],
       default: "signature",
     },
 
+    // ── Raw data field (backward compatible) ──
+    // For typed/initials: "text|styleId"
+    // For drawn/stamp: data URL string
     data: {
-      type: String,   // text|styleId for typed/initials, or data URL for drawn/stamp
+      type: String,
       default: null,
     },
+
+    // ── Extended fields ──
+    signatureText: { type: String, default: null },
+    signatureStyle: { type: Number, default: 1 },
+    signatureColor: { type: String, default: "#1e3a8a" },
+    signatureImage: { type: String, default: null },  // data URL for drawn
+    stampImage: { type: String, default: null },       // data URL for stamp
+
+    // ── Size fields ──
+    width: { type: Number, default: null },
+    height: { type: Number, default: null },
   },
-  {
-    timestamps: true,
-  }
+  { timestamps: true }
 );
 
 module.exports = mongoose.model("Signature", signatureSchema);
