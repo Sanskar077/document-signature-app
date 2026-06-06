@@ -1,15 +1,28 @@
 const Signature = require("../models/Signature");
 const Document = require("../models/Document");
+const AuditLog = require("../models/AuditLog");
 const mongoose = require("mongoose");
 
 // Create Signature
 exports.createSignature = async (req, res) => {
   try {
-    const { documentId, x, y, page, type, data } = req.body;
+    const {
+      documentId,
+      x,
+      y,
+      page,
+      type,
+      data,
+      signatureText,
+      signatureStyle,
+      signatureColor,
+      signatureImage,
+      stampImage,
+      width,
+      height,
+    } = req.body;
 
-    const document = await Document.findById(
-      documentId
-    );
+    const document = await Document.findById(documentId);
 
     if (!document) {
       return res.status(404).json({
@@ -18,41 +31,58 @@ exports.createSignature = async (req, res) => {
       });
     }
 
-    if (
-      document.owner.toString() !==
-      req.user.id
-    ) {
+    if (document.owner.toString() !== req.user.id) {
       return res.status(403).json({
         success: false,
         message: "Access denied",
       });
     }
 
-    // Prevent duplicate signatures
-    const existingSignature =
-      await Signature.findOne({
-        documentId,
-        userId: req.user.id,
-      });
+    // Check for existing signature (allow update)
+    const existingSignature = await Signature.findOne({
+      documentId,
+      userId: req.user.id,
+    });
+
+    let signature;
+    const sigData = {
+      documentId,
+      userId: req.user.id,
+      x,
+      y,
+      page: page || 1,
+      type: type || "signature",
+      data: data || null,
+      signatureText: signatureText || null,
+      signatureStyle: signatureStyle || 1,
+      signatureColor: signatureColor || "#1e3a8a",
+      signatureImage: signatureImage || null,
+      stampImage: stampImage || null,
+      width: width || null,
+      height: height || null,
+    };
 
     if (existingSignature) {
-      return res.status(400).json({
-        success: false,
-        message:
-          "Signature already exists for this document",
-      });
+      // Update the existing signature instead of blocking
+      signature = await Signature.findByIdAndUpdate(
+        existingSignature._id,
+        sigData,
+        { new: true }
+      );
+    } else {
+      signature = await Signature.create(sigData);
     }
 
-    const signature =
-      await Signature.create({
-        documentId,
-        userId: req.user.id,
-        x,
-        y,
-        page,
-        type: type || "signature",
-        data: data || null,
-      });
+    // ── Update document status to "signed" ──
+    await Document.findByIdAndUpdate(documentId, { status: "signed" });
+
+    // ── Audit trail ──
+    await AuditLog.create({
+      documentId,
+      userId: req.user.id,
+      action: "signature_placed",
+      metadata: { type, page, x, y, signatureId: signature._id },
+    });
 
     res.status(201).json({
       success: true,
@@ -60,7 +90,6 @@ exports.createSignature = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-
     res.status(500).json({
       success: false,
       message: error.message,
@@ -69,39 +98,29 @@ exports.createSignature = async (req, res) => {
 };
 
 // Get Signatures By Document
-exports.getDocumentSignatures =
-  async (req, res) => {
-    try {
-      const { id } = req.params;
+exports.getDocumentSignatures = async (req, res) => {
+  try {
+    const { id } = req.params;
 
-      if (
-        !mongoose.Types.ObjectId.isValid(
-          id
-        )
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "Invalid document ID",
-        });
-      }
-
-      const signatures =
-        await Signature.find({
-          documentId: id,
-        });
-
-      res.status(200).json({
-        success: true,
-        count: signatures.length,
-        signatures,
-      });
-    } catch (error) {
-      console.error(error);
-
-      res.status(500).json({
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
         success: false,
-        message: error.message,
+        message: "Invalid document ID",
       });
     }
-  };
+
+    const signatures = await Signature.find({ documentId: id });
+
+    res.status(200).json({
+      success: true,
+      count: signatures.length,
+      signatures,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};

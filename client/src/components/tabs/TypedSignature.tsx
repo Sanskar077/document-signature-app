@@ -2,7 +2,7 @@ import { useState } from "react";
 
 type Props = {
   defaultName?: string;
-  onSave: (text: string, style: number) => void;
+  onSave: (text: string, style: number, color: string) => void;
 };
 
 const STYLES = [
@@ -11,13 +11,23 @@ const STYLES = [
   { id: 3, className: "sig-style-3", label: "Bold" },
 ];
 
+const COLORS = [
+  { hex: "#1e3a8a", label: "Navy" },
+  { hex: "#1f2937", label: "Ink" },
+  { hex: "#7c3aed", label: "Violet" },
+  { hex: "#0f766e", label: "Teal" },
+  { hex: "#b45309", label: "Amber" },
+  { hex: "#991b1b", label: "Crimson" },
+];
+
 export default function TypedSignature({ defaultName = "", onSave }: Props) {
   const [name, setName] = useState(defaultName);
   const [selected, setSelected] = useState(1);
+  const [color, setColor] = useState(COLORS[0].hex);
 
   const handleSave = () => {
     if (!name.trim()) return;
-    onSave(name.trim(), selected);
+    onSave(name.trim(), selected, color);
   };
 
   return (
@@ -46,6 +56,7 @@ export default function TypedSignature({ defaultName = "", onSave }: Props) {
                 className={`sig-style-option ${s.className} ${selected === s.id ? "selected" : ""}`}
                 onClick={() => setSelected(s.id)}
                 id={`sig-style-${s.id}`}
+                style={{ color }}
               >
                 {name}
               </div>
@@ -53,6 +64,32 @@ export default function TypedSignature({ defaultName = "", onSave }: Props) {
           </div>
         </>
       )}
+
+      {/* Color picker */}
+      <div>
+        <p className="form-label" style={{ marginBottom: "var(--space-2)" }}>
+          Ink color
+        </p>
+        <div style={{ display: "flex", gap: "var(--space-2)" }}>
+          {COLORS.map((c) => (
+            <button
+              key={c.hex}
+              title={c.label}
+              onClick={() => setColor(c.hex)}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                background: c.hex,
+                border: color === c.hex ? "3px solid white" : "2px solid transparent",
+                outline: color === c.hex ? `2px solid ${c.hex}` : "none",
+                cursor: "pointer",
+                padding: 0,
+              }}
+            />
+          ))}
+        </div>
+      </div>
 
       <button
         className="btn btn-primary btn-sm"

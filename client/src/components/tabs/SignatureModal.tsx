@@ -7,10 +7,9 @@ import StampTab from "./StampTab";
 
 export type SignatureResult = {
   type: "typed" | "drawn" | "initials" | "stamp";
-  /** For typed/initials: the text + style ID */
   text?: string;
   style?: number;
-  /** For drawn/stamp: base64 data URL */
+  color?: string;
   dataUrl?: string;
 };
 
@@ -64,7 +63,9 @@ export default function SignatureModal({ onSave, onClose }: Props) {
           {activeTab === "typed" && (
             <TypedSignature
               defaultName={user?.name ?? ""}
-              onSave={(text, style) => onSave({ type: "typed", text, style })}
+              onSave={(text, style, color) =>
+                onSave({ type: "typed", text, style, color })
+              }
             />
           )}
           {activeTab === "drawn" && (
@@ -76,7 +77,9 @@ export default function SignatureModal({ onSave, onClose }: Props) {
           {activeTab === "initials" && (
             <InitialsTab
               defaultName={user?.name ?? ""}
-              onSave={(text, style) => onSave({ type: "initials", text, style })}
+              onSave={(text, style, color) =>
+                onSave({ type: "initials", text, style, color })
+              }
             />
           )}
           {activeTab === "stamp" && (

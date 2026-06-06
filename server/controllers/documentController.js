@@ -1,11 +1,10 @@
 const Document = require("../models/Document");
 const Signature = require("../models/Signature");
+const AuditLog = require("../models/AuditLog");
 const path = require("path");
 const fs = require("fs");
+const { generateSignedPdf } = require("../utils/pdfSigner");
 
-const {
-  generateSignedPdf,
-} = require("../utils/pdfSigner");
 // Upload Document
 exports.uploadDocument = async (req, res) => {
   try {
@@ -24,13 +23,20 @@ exports.uploadDocument = async (req, res) => {
       fileSize: req.file.size,
     });
 
+    // Audit trail
+    await AuditLog.create({
+      documentId: document._id,
+      userId: req.user.id,
+      action: "document_uploaded",
+      metadata: { fileName: req.file.filename, originalName: req.file.originalname },
+    });
+
     res.status(201).json({
       success: true,
       document,
     });
   } catch (error) {
     console.error(error);
-
     res.status(500).json({
       success: false,
       message: error.message,
@@ -52,7 +58,6 @@ exports.getUserDocuments = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-
     res.status(500).json({
       success: false,
       message: error.message,
@@ -85,84 +90,73 @@ exports.getDocumentById = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-
     res.status(500).json({
       success: false,
       message: error.message,
     });
   }
 };
-exports.finalizeDocument =
-  async (req, res) => {
-    try {
-      const document =
-        await Document.findById(
-          req.params.id
-        );
 
-      if (!document) {
-        return res.status(404).json({
-          success: false,
-          message:
-            "Document not found",
-        });
-      }
+// Finalize Document — generate signed PDF
+exports.finalizeDocument = async (req, res) => {
+  try {
+    const document = await Document.findById(req.params.id);
 
-      const signatures =
-        await Signature.find({
-          documentId: document._id,
-        });
-
-      if (
-        signatures.length === 0
-      ) {
-        return res.status(400).json({
-          success: false,
-          message:
-            "No signatures found",
-        });
-      }
-
-      const signedDir =
-        path.join(
-          __dirname,
-          "../signed"
-        );
-
-      if (
-        !fs.existsSync(signedDir)
-      ) {
-        fs.mkdirSync(
-          signedDir
-        );
-      }
-
-      const outputPath =
-        path.join(
-          signedDir,
-          `signed-${document.fileName}`
-        );
-
-      await generateSignedPdf(
-        document.filePath,
-        outputPath,
-        signatures
-      );
-
-      res.status(200).json({
-        success: true,
-        message:
-          "Signed PDF generated",
-        downloadPath:
-          outputPath,
-      });
-    } catch (error) {
-      console.error(error);
-
-      res.status(500).json({
+    if (!document) {
+      return res.status(404).json({
         success: false,
-        message:
-          error.message,
+        message: "Document not found",
       });
     }
-  };
+
+    if (document.owner.toString() !== req.user.id) {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied",
+      });
+    }
+
+    const signatures = await Signature.find({ documentId: document._id });
+
+    if (signatures.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No signatures found. Please add a signature before finalizing.",
+      });
+    }
+
+    const signedDir = path.join(__dirname, "../signed");
+    if (!fs.existsSync(signedDir)) {
+      fs.mkdirSync(signedDir, { recursive: true });
+    }
+
+    const outputFileName = `signed-${Date.now()}-${document.fileName}`;
+    const outputPath = path.join(signedDir, outputFileName);
+
+    await generateSignedPdf(document.filePath, outputPath, signatures);
+
+    // Update document status to "signed"
+    await Document.findByIdAndUpdate(document._id, { status: "signed" });
+
+    // Audit trail
+    await AuditLog.create({
+      documentId: document._id,
+      userId: req.user.id,
+      action: "document_finalized",
+      metadata: { outputFileName, signatureCount: signatures.length },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Signed PDF generated successfully",
+      downloadPath: `/signed/${outputFileName}`,
+      fileName: outputFileName,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
