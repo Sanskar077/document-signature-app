@@ -5,7 +5,7 @@ const mongoose = require("mongoose");
 // Create Signature
 exports.createSignature = async (req, res) => {
   try {
-    const { documentId, x, y, page } = req.body;
+    const { documentId, x, y, page, type, data } = req.body;
 
     const document = await Document.findById(
       documentId
@@ -50,6 +50,8 @@ exports.createSignature = async (req, res) => {
         x,
         y,
         page,
+        type: type || "signature",
+        data: data || null,
       });
 
     res.status(201).json({

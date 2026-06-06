@@ -5,28 +5,18 @@ const protect = require("../middleware/authMiddleware");
 const {
   generateLink,
   validateLink,
-  savePublicSignature,
+  signDocument,
 } = require("../controllers/publicSignatureController");
 
 const router = express.Router();
 
-// Generate Public Link
-router.post(
-  "/:id",
-  protect,
-  generateLink
-);
+// Protected — owner generates a link for a document
+router.post("/:id", protect, generateLink);
 
-// Validate Public Link
-router.get(
-  "/:token",
-  validateLink
-);
+// Public — validate token (existing endpoint, behaviour unchanged)
+router.get("/:token", validateLink);
 
-// Save Public Signature
-router.post(
-  "/:token/sign",
-  savePublicSignature
-);
+// Public — submit signature via token (NEW endpoint)
+router.post("/:token/sign", signDocument);
 
 module.exports = router;

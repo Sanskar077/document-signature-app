@@ -11,7 +11,7 @@ const signatureSchema = new mongoose.Schema(
     userId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: false,
+      required: true,
     },
 
     x: {
@@ -33,6 +33,18 @@ const signatureSchema = new mongoose.Schema(
       type: String,
       enum: ["pending", "signed"],
       default: "signed",
+    },
+
+    // ── Extended fields (Day 12+) ──
+    type: {
+      type: String,
+      enum: ["signature", "typed", "drawn", "initials", "stamp", "date", "text"],
+      default: "signature",
+    },
+
+    data: {
+      type: String,   // text|styleId for typed/initials, or data URL for drawn/stamp
+      default: null,
     },
   },
   {
