@@ -1,267 +1,165 @@
-import { useEffect, useState, useRef } from "react";
-import { useParams } from "react-router-dom";
-import axios from "axios";
-import SignatureModal, { type SignatureResult } from "../components/tabs/SignatureModal";
-import Navbar from "../components/Navbar";
-import LoadingSpinner from "../components/LoadingSpinner";
-import { Document, Page, pdfjs } from "react-pdf";
-import "react-pdf/dist/Page/AnnotationLayer.css";
-import "react-pdf/dist/Page/TextLayer.css";
+import { useEffect, useState } from "react";
+  import { useParams, Link } from "react-router-dom";
+  import axios from "axios";
+  import { DndContext } from "@dnd-kit/core";
+  import { Document, Page, pdfjs } from "react-pdf";
+  import SignatureModal, { type SignatureResult } from "../components/tabs/SignatureModal";
+  import LoadingSpinner from "../components/LoadingSpinner";
+  import "react-pdf/dist/Page/AnnotationLayer.css";
+  import "react-pdf/dist/Page/TextLayer.css";
 
-pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+  pdfjs.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+  const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+  export default function PublicSign() {
+    const { token } = useParams<{ token: string }>();
+    const [doc, setDoc] = useState<{ _id: string; originalName: string; status: string } | null>(null);
+    const [pdfBlob, setPdfBlob] = useState<string | null>(null);
+    const [numPages, setNumPages] = useState(0);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [modalOpen, setModalOpen] = useState(false);
+    const [sigResult, setSigResult] = useState<SignatureResult | null>(null);
+    const [position, setPosition] = useState({ x: 80, y: 80 });
+    const [name, setName] = useState(""); const [email, setEmail] = useState("");
+    const [saving, setSaving] = useState(false); const [saved, setSaved] = useState(false);
+    const [error, setError] = useState(""); const [loading, setLoading] = useState(true);
+    const [toast, setToast] = useState<string | null>(null);
+    const [pdfW, setPdfW] = useState(700); const [pdfH, setPdfH] = useState(0);
 
-function renderSignaturePreview(result: SignatureResult, w = 150, h = 60): React.ReactNode {
-  const fontMap: Record<number, string> = {
-    1: "var(--font-sign)",
-    2: "var(--font-sign-2)",
-    3: "var(--font-sign-3)",
-  };
+    const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
 
-  if (result.type === "typed" || result.type === "initials") {
-    return (
-      <span
-        style={{
-          fontFamily: fontMap[result.style ?? 1],
-          fontSize: "1.8rem",
-          color: result.color || "#1e3a8a",
-          padding: "4px 8px",
-          background: "rgba(255,255,255,0.92)",
-          borderRadius: 4,
-          border: "1px solid rgba(99,102,241,0.4)",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {result.text}
-      </span>
-    );
-  }
-  if (result.dataUrl) {
-    return (
-      <img
-        src={result.dataUrl}
-        alt="signature"
-        style={{ width: w, height: h, objectFit: "contain", background: "rgba(255,255,255,0.92)", borderRadius: 4, border: "1px solid rgba(99,102,241,0.4)", padding: 4 }}
-      />
-    );
-  }
-  return null;
-}
+    useEffect(() => {
+      if (!token) return;
+      axios.get(`${API_BASE}/api/public-sign/view/${token}`)
+        .then(r => setDoc(r.data.document))
+        .catch(() => setError("This signing link is invalid or has expired."))
+        .finally(() => setLoading(false));
+    }, [token]);
 
-export default function PublicSign() {
-  const { token } = useParams();
-  const [doc, setDoc] = useState<{ originalName: string; status: string; fileName?: string } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [signatureResult, setSignatureResult] = useState<SignatureResult | null>(null);
-  const [position, setPosition] = useState({ x: 200, y: 200 });
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState("");
-  const [pdfPageWidth, setPdfPageWidth] = useState(750);
-  const [pdfPageHeight, setPdfPageHeight] = useState(0);
-  const [isDragging, setIsDragging] = useState(false);
-  const dragOffset = useRef({ x: 0, y: 0 });
-  const canvasRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+      if (!token || !doc) return;
+      let url: string | null = null;
+      fetch(`${API_BASE}/api/public-sign/file/${token}`)
+        .then(r => { if (!r.ok) throw new Error(); return r.blob(); })
+        .then(b => { url = URL.createObjectURL(b); setPdfBlob(url); })
+        .catch(() => setError("Could not load the PDF document."));
+      return () => { if (url) URL.revokeObjectURL(url); };
+    }, [token, doc]);
 
-  useEffect(() => {
-    fetchDocument();
-  }, []);
-
-  const fetchDocument = async () => {
-    try {
-      const res = await axios.get(`${API_BASE}/api/public-sign/${token}`);
-      setDoc(res.data.document);
-    } catch {
-      setDoc(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (!canvasRef.current) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    dragOffset.current = {
-      x: e.clientX - rect.left - position.x,
-      y: e.clientY - rect.top - position.y,
+    const handleSave = async () => {
+      if (!sigResult || !name.trim() || !email.trim()) return;
+      setSaving(true); setError("");
+      try {
+        await axios.post(`${API_BASE}/api/public-sign/sign/${token}`, {
+          x: ((position.x / pdfW) * 100).toFixed(2),
+          y: ((position.y / pdfH) * 100).toFixed(2),
+          page: currentPage, type: sigResult.type,
+          data: sigResult.dataUrl ?? `${sigResult.text}|${sigResult.style}`,
+          signatureText: sigResult.text, signatureStyle: sigResult.style, signatureColor: sigResult.color,
+          signatureImage: sigResult.type !== "stamp" ? (sigResult.dataUrl ?? null) : null,
+          stampImage: sigResult.type === "stamp" ? sigResult.dataUrl : null,
+          signerName: name.trim(), signerEmail: email.trim(), width: 180, height: 72,
+        });
+        setSaved(true); showToast("Signature submitted!");
+      } catch (err: unknown) {
+        const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Failed to submit";
+        setError(msg);
+      } finally { setSaving(false); }
     };
-    setIsDragging(true);
-  };
 
-  useEffect(() => {
-    if (!isDragging) return;
-    const onMove = (e: MouseEvent) => {
-      if (!canvasRef.current) return;
-      const rect = canvasRef.current.getBoundingClientRect();
-      setPosition({
-        x: Math.max(0, Math.min(e.clientX - rect.left - dragOffset.current.x, pdfPageWidth - 150)),
-        y: Math.max(0, Math.min(e.clientY - rect.top - dragOffset.current.y, pdfPageHeight - 60)),
-      });
-    };
-    const onUp = () => setIsDragging(false);
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => { window.removeEventListener("mousemove", onMove); window.removeEventListener("mouseup", onUp); };
-  }, [isDragging, pdfPageWidth, pdfPageHeight]);
+    if (loading) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-primary)" }}><LoadingSpinner text="Loading…" /></div>;
+    if (error && !doc) return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-primary)", padding: 24 }}>
+        <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 20, padding: 48, textAlign: "center", maxWidth: 440 }}>
+          <div style={{ fontSize: "3rem", marginBottom: 16 }}>⚠️</div>
+          <h2 style={{ color: "var(--text-primary)", fontWeight: 800, margin: "0 0 8px" }}>Link Expired</h2>
+          <p style={{ color: "var(--text-muted)", marginBottom: 24, fontSize: "0.9rem" }}>{error}</p>
+          <Link to="/" style={{ padding: "10px 24px", borderRadius: 10, background: "var(--accent)", color: "white", textDecoration: "none", fontWeight: 700 }}>← Home</Link>
+        </div>
+      </div>
+    );
 
-  const saveSignature = async () => {
-    if (!signatureResult) return;
-    setSaving(true);
-    setError("");
-    const pw = pdfPageWidth || 750;
-    const ph = pdfPageHeight || 1000;
-    const xPct = Number(((position.x / pw) * 100).toFixed(2));
-    const yPct = Number(((position.y / ph) * 100).toFixed(2));
-    try {
-      await axios.post(`${API_BASE}/api/public-sign/${token}/sign`, {
-        x: xPct,
-        y: yPct,
-        page: 1,
-        type: signatureResult.type,
-        data: signatureResult.dataUrl ?? `${signatureResult.text}|${signatureResult.style}`,
-        signatureText: signatureResult.text || null,
-        signatureStyle: signatureResult.style || 1,
-        signatureColor: signatureResult.color || "#1e3a8a",
-        signatureImage: signatureResult.type === "drawn" ? signatureResult.dataUrl : null,
-        stampImage: signatureResult.type === "stamp" ? signatureResult.dataUrl : null,
-        width: 150,
-        height: 60,
-      });
-      setSaved(true);
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message ?? "Failed to save signature.";
-      setError(msg);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (loading) return <LoadingSpinner fullPage text="Validating link…" />;
-
-  if (!doc) {
     return (
-      <div className="loading-page">
-        <div style={{ background: "var(--danger-light)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "var(--radius-lg)", padding: "var(--space-8)", textAlign: "center", maxWidth: 400 }}>
-          <div style={{ fontSize: "3rem", marginBottom: "var(--space-4)" }}>🔒</div>
-          <h2 style={{ color: "var(--danger)", marginBottom: "var(--space-3)" }}>Invalid or Expired Link</h2>
-          <p style={{ color: "var(--text-muted)" }}>This signing link is no longer valid. Please request a new one from the document owner.</p>
+      <div style={{ minHeight: "100vh", background: "var(--bg-primary)" }}>
+        {toast && <div style={{ position: "fixed", bottom: 24, right: 24, zIndex: 9999, background: "#10b981", color: "white", padding: "12px 20px", borderRadius: 12, fontWeight: 600, fontSize: "0.9rem", boxShadow: "0 8px 24px rgba(0,0,0,0.4)" }}>✓ {toast}</div>}
+        {modalOpen && <SignatureModal onSave={r => { setSigResult(r); setModalOpen(false); }} onClose={() => setModalOpen(false)} />}
+
+        {/* Header */}
+        <div style={{ background: "var(--bg-card)", borderBottom: "1px solid var(--border)", padding: "16px 24px", display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ fontSize: "1.2rem" }}>✍️</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ color: "var(--text-primary)", fontWeight: 700, fontSize: "0.95rem", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{doc?.originalName ?? "Document"}</p>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.75rem", margin: 0 }}>You're invited to sign this document</p>
+          </div>
+          <div style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.3)", borderRadius: 8, padding: "4px 12px", fontSize: "0.78rem", color: "var(--accent)", fontWeight: 700, flexShrink: 0 }}>🔒 Secure Link</div>
+        </div>
+
+        <div className="container" style={{ maxWidth: 960, paddingTop: 32, paddingBottom: 64 }}>
+          {saved ? (
+            <div style={{ textAlign: "center", padding: "80px 24px" }}>
+              <div style={{ fontSize: "4rem", marginBottom: 16 }}>🎉</div>
+              <h2 style={{ color: "var(--text-primary)", fontWeight: 800, fontSize: "1.5rem", margin: "0 0 8px" }}>Signature submitted!</h2>
+              <p style={{ color: "var(--text-muted)", fontSize: "0.95rem", marginBottom: 32 }}>Your signature has been successfully added to the document.</p>
+              <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+                <button onClick={() => setSaved(false)} style={{ padding: "10px 24px", borderRadius: 10, background: "var(--bg-card)", border: "1px solid var(--border)", color: "var(--text-primary)", fontWeight: 600, cursor: "pointer" }}>Add Another Signature</button>
+                <Link to="/" style={{ padding: "10px 24px", borderRadius: 10, background: "var(--accent)", color: "white", textDecoration: "none", fontWeight: 700 }}>Done</Link>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 280px", gap: 24, alignItems: "start" }}>
+              {/* PDF viewer */}
+              <div style={{ background: "#1e1f28", borderRadius: 16, overflow: "hidden", display: "flex", justifyContent: "center", padding: 20 }}>
+                {pdfBlob ? (
+                  <div style={{ position: "relative" }}>
+                    <Document file={pdfBlob} onLoadSuccess={({ numPages: n }) => setNumPages(n)} loading={<LoadingSpinner text="Loading PDF…" />}>
+                      <Page pageNumber={currentPage} width={Math.min(pdfW, 600)} renderAnnotationLayer={false} renderTextLayer={false} onRenderSuccess={p => setPdfH(p.height)} />
+                    </Document>
+                    {numPages > 1 && (
+                      <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 12 }}>
+                        <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} style={{ padding: "6px 14px", borderRadius: 8, background: "var(--bg-card)", border: "1px solid var(--border)", color: "var(--text-primary)", cursor: "pointer" }}>←</button>
+                        <span style={{ color: "var(--text-muted)", fontSize: "0.85rem", padding: "6px 12px" }}>{currentPage} / {numPages}</span>
+                        <button onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))} disabled={currentPage === numPages} style={{ padding: "6px 14px", borderRadius: 8, background: "var(--bg-card)", border: "1px solid var(--border)", color: "var(--text-primary)", cursor: "pointer" }}>→</button>
+                      </div>
+                    )}
+                  </div>
+                ) : <LoadingSpinner text="Loading PDF…" />}
+              </div>
+
+              {/* Signing panel */}
+              <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 16, padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+                <div>
+                  <p style={{ color: "var(--text-muted)", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", margin: "0 0 8px" }}>Your Info</p>
+                  <input value={name} onChange={e => setName(e.target.value)} placeholder="Your full name"
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 10, background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-primary)", fontSize: "0.875rem", outline: "none", boxSizing: "border-box", marginBottom: 10 }}
+                    onFocus={e => (e.currentTarget.style.borderColor = "var(--border-focus)")} onBlur={e => (e.currentTarget.style.borderColor = "var(--border)")}
+                  />
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="your@email.com"
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 10, background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-primary)", fontSize: "0.875rem", outline: "none", boxSizing: "border-box" }}
+                    onFocus={e => (e.currentTarget.style.borderColor = "var(--border-focus)")} onBlur={e => (e.currentTarget.style.borderColor = "var(--border)")}
+                  />
+                </div>
+                <div style={{ height: 1, background: "var(--border)" }} />
+                <div>
+                  <p style={{ color: "var(--text-muted)", fontSize: "0.72rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", margin: "0 0 8px" }}>Signature</p>
+                  {sigResult ? (
+                    <div style={{ background: "white", borderRadius: 10, padding: 12, minHeight: 56, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 10 }}>
+                      {sigResult.dataUrl ? <img src={sigResult.dataUrl} alt="sig" style={{ maxWidth: "100%", maxHeight: 60, objectFit: "contain" }} /> :
+                        <span style={{ fontFamily: "var(--font-sign)", fontSize: "1.4rem", color: sigResult.color || "#1e3a8a" }}>{sigResult.text}</span>}
+                    </div>
+                  ) : null}
+                  <button onClick={() => setModalOpen(true)} style={{ width: "100%", padding: "10px", borderRadius: 10, background: sigResult ? "var(--bg-secondary)" : "var(--accent)", border: `1px solid ${sigResult ? "var(--border)" : "transparent"}`, color: sigResult ? "var(--text-secondary)" : "white", fontWeight: 600, cursor: "pointer", fontSize: "0.875rem" }}>
+                    {sigResult ? "Change Signature" : "Choose Signature ✍️"}
+                  </button>
+                </div>
+                {error && <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "10px 12px", color: "var(--danger)", fontSize: "0.82rem" }}>⚠ {error}</div>}
+                <button onClick={handleSave} disabled={!sigResult || !name.trim() || !email.trim() || saving}
+                  style={{ padding: "12px", borderRadius: 10, background: sigResult && name && email ? "var(--accent)" : "var(--bg-secondary)", border: "none", color: sigResult && name && email ? "white" : "var(--text-disabled)", fontWeight: 700, fontSize: "0.95rem", cursor: sigResult && name && email && !saving ? "pointer" : "default", transition: "all 0.2s" }}
+                >{saving ? "Submitting…" : "Submit Signature"}</button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
   }
-
-  if (saved) {
-    return (
-      <div className="loading-page">
-        <div style={{ background: "var(--success-light)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: "var(--radius-lg)", padding: "var(--space-8)", textAlign: "center", maxWidth: 400 }}>
-          <div style={{ fontSize: "3rem", marginBottom: "var(--space-4)" }}>✅</div>
-          <h2 style={{ color: "var(--success)", marginBottom: "var(--space-3)" }}>Document Signed!</h2>
-          <p style={{ color: "var(--text-muted)" }}>Your signature has been recorded. You may now close this page.</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <Navbar />
-      {modalOpen && (
-        <SignatureModal
-          onSave={(r) => { setSignatureResult(r); setModalOpen(false); }}
-          onClose={() => setModalOpen(false)}
-        />
-      )}
-
-      <div className="page-wrapper">
-        <div className="container" style={{ paddingTop: "var(--space-8)", paddingBottom: "var(--space-12)" }}>
-          <div className="page-header">
-            <div>
-              <h1 className="page-title">Sign Document</h1>
-              <p className="page-subtitle">
-                You have been invited to sign:{" "}
-                <strong style={{ color: "var(--text-primary)" }}>{doc.originalName}</strong>
-              </p>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", gap: "var(--space-6)", flexWrap: "wrap", alignItems: "flex-start" }}>
-            {/* Sidebar */}
-            <div className="card" style={{ width: 240, flexShrink: 0 }}>
-              <h3 style={{ color: "var(--text-primary)", marginBottom: "var(--space-4)", fontSize: "0.95rem" }}>Your Signature</h3>
-
-              {signatureResult ? (
-                <div style={{ padding: "var(--space-3)", background: "var(--bg-secondary)", borderRadius: "var(--radius)", border: "1px solid var(--border)", marginBottom: "var(--space-4)", overflow: "hidden" }}>
-                  {renderSignaturePreview(signatureResult)}
-                </div>
-              ) : (
-                <div style={{ padding: "var(--space-5)", textAlign: "center", background: "var(--bg-secondary)", borderRadius: "var(--radius)", border: "1px dashed var(--border)", marginBottom: "var(--space-4)", color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                  No signature selected
-                </div>
-              )}
-
-              <button className="btn btn-secondary w-full" onClick={() => setModalOpen(true)} id="open-modal-public" style={{ marginBottom: "var(--space-4)" }}>
-                {signatureResult ? "Change Signature" : "Choose Signature ✍️"}
-              </button>
-
-              <div className="divider" />
-
-              <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "var(--space-3)" }}>
-                Drag your signature to position it on the document.
-              </p>
-
-              {error && <div className="alert alert-error" style={{ marginBottom: "var(--space-3)" }}>{error}</div>}
-
-              <button className="btn btn-primary w-full" onClick={saveSignature} disabled={!signatureResult || saving} id="save-public-sig-btn">
-                {saving ? "Saving…" : "Submit Signature"}
-              </button>
-            </div>
-
-            {/* PDF Canvas */}
-            <div ref={canvasRef} style={{ flex: 1, position: "relative", display: "inline-block", cursor: isDragging ? "grabbing" : "default" }}>
-              <Document
-                file={doc.fileName ? `${API_BASE}/uploads/${doc.fileName}` : undefined}
-                loading={<LoadingSpinner text="Loading PDF…" />}
-                onLoadError={() => {}}
-              >
-                <Page
-                  pageNumber={1}
-                  width={pdfPageWidth}
-                  renderAnnotationLayer={false}
-                  renderTextLayer={false}
-                  onRenderSuccess={(page) => setPdfPageHeight(page.height)}
-                />
-              </Document>
-
-              {/* Draggable signature overlay */}
-              {signatureResult && (
-                <div
-                  onMouseDown={handleMouseDown}
-                  style={{
-                    position: "absolute",
-                    left: position.x,
-                    top: position.y,
-                    cursor: isDragging ? "grabbing" : "grab",
-                    userSelect: "none",
-                    zIndex: 10,
-                  }}
-                >
-                  {renderSignaturePreview(signatureResult)}
-                </div>
-              )}
-
-              {!signatureResult && (
-                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(13,14,18,0.4)", pointerEvents: "none" }}>
-                  <p style={{ color: "rgba(255,255,255,0.85)", fontSize: "1rem", fontWeight: 600, textShadow: "0 1px 4px rgba(0,0,0,0.7)" }}>
-                    ← Choose a signature then drag it into position
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
-  );
-}
+  

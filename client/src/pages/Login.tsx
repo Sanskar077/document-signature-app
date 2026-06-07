@@ -1,126 +1,83 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+  import { Link, useNavigate } from "react-router-dom";
+  import { useAuth } from "../context/AuthContext";
+  import Navbar from "../components/Navbar";
 
-export default function Login() {
-  const { login } = useAuth();
-  const navigate = useNavigate();
+  const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  export default function Login() {
+    const { login } = useAuth();
+    const navigate = useNavigate();
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      setError(""); setLoading(true);
+      try {
+        const res = await fetch(`${API_BASE}/api/auth/login`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || "Login failed");
+        login(data.token, data.user);
+        navigate("/dashboard");
+      } catch (err: unknown) {
+        setError((err as Error).message ?? "Login failed");
+      } finally { setLoading(false); }
+    };
 
-    if (!email.trim() || !password.trim()) {
-      setError("Please fill in all fields.");
-      return;
-    }
+    return (
+      <>
+        <Navbar />
+        <div style={{ minHeight: "calc(100vh - var(--navbar-h))", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: "var(--bg-primary)" }}>
+          <div style={{ width: "100%", maxWidth: 420 }}>
+            <div style={{ textAlign: "center", marginBottom: 32 }}>
+              <div style={{ fontSize: "2.5rem", marginBottom: 12 }}>✍️</div>
+              <h1 style={{ color: "var(--text-primary)", fontSize: "1.5rem", fontWeight: 800, margin: "0 0 6px" }}>Welcome back</h1>
+              <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", margin: 0 }}>Sign in to your SignFlow account</p>
+            </div>
 
-    setLoading(true);
-    try {
-      await login(email.trim(), password);
-      navigate("/dashboard");
-    } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { message?: string } } })?.response?.data
-          ?.message ?? "Invalid email or password.";
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
-  };
+            <div style={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 20, padding: "36px 32px" }}>
+              <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <div>
+                  <label style={{ color: "var(--text-secondary)", fontSize: "0.8rem", fontWeight: 600, display: "block", marginBottom: 6 }}>Email</label>
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" required autoComplete="email"
+                    style={{ width: "100%", padding: "12px 14px", borderRadius: 10, background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-primary)", fontSize: "0.875rem", outline: "none", boxSizing: "border-box" }}
+                    onFocus={e => (e.currentTarget.style.borderColor = "var(--border-focus)")} onBlur={e => (e.currentTarget.style.borderColor = "var(--border)")}
+                  />
+                </div>
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                    <label style={{ color: "var(--text-secondary)", fontSize: "0.8rem", fontWeight: 600 }}>Password</label>
+                    <Link to="/forgot-password" style={{ color: "var(--accent)", fontSize: "0.78rem", fontWeight: 600, textDecoration: "none" }}>Forgot password?</Link>
+                  </div>
+                  <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter your password" required autoComplete="current-password"
+                    style={{ width: "100%", padding: "12px 14px", borderRadius: 10, background: "var(--bg-input)", border: "1px solid var(--border)", color: "var(--text-primary)", fontSize: "0.875rem", outline: "none", boxSizing: "border-box" }}
+                    onFocus={e => (e.currentTarget.style.borderColor = "var(--border-focus)")} onBlur={e => (e.currentTarget.style.borderColor = "var(--border)")}
+                  />
+                </div>
+                {error && (
+                  <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: 10, padding: "10px 12px", color: "var(--danger)", fontSize: "0.82rem" }}>
+                    ⚠ {error}
+                  </div>
+                )}
+                <button type="submit" disabled={loading}
+                  style={{ padding: "12px", borderRadius: 10, background: "var(--accent)", border: "none", color: "white", fontWeight: 700, fontSize: "0.95rem", cursor: loading ? "default" : "pointer", opacity: loading ? 0.7 : 1, marginTop: 4, transition: "opacity 0.15s" }}
+                >{loading ? "Signing in…" : "Sign In"}</button>
+              </form>
+            </div>
 
-  return (
-    <div className="auth-page">
-      <div className="auth-box animate-slide-up">
-        {/* Logo */}
-        <div className="auth-logo">
-          <div className="auth-logo-icon">✍️</div>
-          <span
-            style={{
-              fontSize: "1.25rem",
-              fontWeight: 700,
-              color: "var(--text-primary)",
-            }}
-          >
-            SignFlow
-          </span>
+            <p style={{ textAlign: "center", color: "var(--text-muted)", fontSize: "0.875rem", marginTop: 20 }}>
+              Don't have an account?{" "}
+              <Link to="/register" style={{ color: "var(--accent)", fontWeight: 700, textDecoration: "none" }}>Create one free</Link>
+            </p>
+          </div>
         </div>
-
-        <h1 className="auth-title">Welcome back</h1>
-        <p className="auth-subtitle">
-          Sign in to your account to continue
-        </p>
-
-        {error && (
-          <div className="alert alert-error" style={{ marginBottom: "var(--space-4)" }}>
-            <span>⚠</span>
-            <span>{error}</span>
-          </div>
-        )}
-
-        <form className="auth-form" onSubmit={handleSubmit} id="login-form">
-          <div className="form-group">
-            <label htmlFor="login-email" className="form-label">
-              Email address
-            </label>
-            <input
-              id="login-email"
-              type="email"
-              className="form-input"
-              placeholder="you@company.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
-              required
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="login-password" className="form-label">
-              Password
-            </label>
-            <input
-              id="login-password"
-              type="password"
-              className="form-input"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="btn btn-primary w-full"
-            disabled={loading}
-            id="login-submit"
-            style={{ marginTop: "var(--space-2)" }}
-          >
-            {loading ? (
-              <>
-                <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
-                Signing in…
-              </>
-            ) : (
-              "Sign In →"
-            )}
-          </button>
-        </form>
-
-        <p className="auth-footer">
-          Don't have an account?{" "}
-          <Link to="/register" id="go-to-register">
-            Create one free
-          </Link>
-        </p>
-      </div>
-    </div>
-  );
-}
+      </>
+    );
+  }
+  

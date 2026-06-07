@@ -1,256 +1,88 @@
 const fs = require("fs");
-const { PDFDocument, rgb, StandardFonts } = require("pdf-lib");
+  const { PDFDocument, rgb, StandardFonts } = require("pdf-lib");
 
-/**
- * generateSignedPdf
- *
- * Supports all field types:
- *   - drawn   : embeds the actual drawn signature image (PNG data URL)
- *   - stamp   : embeds the actual stamp image (PNG/JPG data URL)
- *   - typed   : draws the typed name text in a script-style font
- *   - initials: draws the initials text
- *   - date    : draws formatted date
- *   - text    : draws arbitrary text
- *
- * Color support: reads sig.signatureColor (hex) if present.
- * Size support:  reads sig.width / sig.height for image-based sigs.
- */
-const generateSignedPdf = async (inputPath, outputPath, signatures) => {
-  const pdfBytes = fs.readFileSync(inputPath);
-  const pdfDoc = await PDFDocument.load(pdfBytes);
-  const pages = pdfDoc.getPages();
-  const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-  const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const generateSignedPdf = async (inputPath, outputPath, signatures) => {
+    const pdfBytes = fs.readFileSync(inputPath);
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const pages = pdfDoc.getPages();
+    const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const fontReg = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-  for (const signature of signatures) {
-    const pageIndex = (signature.page || 1) - 1;
-    const page = pages[pageIndex];
-    if (!page) continue;
+    for (const sig of signatures) {
+      const pageIndex = (sig.page || 1) - 1;
+      const page = pages[pageIndex];
+      if (!page) continue;
 
-    const { width: pageW, height: pageH } = page.getSize();
+      const { width: pageW, height: pageH } = page.getSize();
+      const xPct = typeof sig.x === "number" ? sig.x : parseFloat(sig.x) || 0;
+      const yPct = typeof sig.y === "number" ? sig.y : parseFloat(sig.y) || 0;
+      const x = (xPct / 100) * pageW;
+      const y = pageH - (yPct / 100) * pageH;
+      const type = sig.type || "signature";
+      const sigColor = parseHex(sig.signatureColor || sig.color || "#1e3a8a");
 
-    // Convert percentage-based positions to absolute PDF coordinates
-    const x = (signature.x / 100) * pageW;
-    // PDF Y-axis is bottom-up; invert from top-down percentage
-    const y = pageH - (signature.y / 100) * pageH;
+      const imageData = sig.signatureImage || sig.stampImage ||
+        (sig.data && typeof sig.data === "string" && sig.data.startsWith("data:") ? sig.data : null);
 
-    const type = signature.type || "signature";
+      if (imageData?.startsWith("data:")) {
+        try {
+          const img = await embedImg(pdfDoc, imageData);
+          const w = sig.width || 180;
+          const h = sig.height || 72;
+          page.drawImage(img, { x, y: y - h, width: w, height: h });
+          continue;
+        } catch (_) { /* fall through to text */ }
+      }
 
-    // Parse color from hex string (e.g. "#1e3a8a" → rgb(0.12, 0.22, 0.54))
-    const sigColor = parseHexColor(signature.signatureColor || signature.color || "#1e3a8a");
-
-    switch (type) {
-      case "drawn": {
-        // Embed the actual drawn signature image
-        const data = signature.data || signature.signatureImage;
-        if (data && data.startsWith("data:")) {
-          try {
-            const embedded = await embedImageFromDataUrl(pdfDoc, data);
-            const w = signature.width || 150;
-            const h = signature.height || 60;
-            // Draw image; PDF y is bottom-left, so shift up by height
-            page.drawImage(embedded, {
-              x,
-              y: y - h,
-              width: w,
-              height: h,
-            });
-          } catch {
-            // Fallback: text
-            page.drawText("SIGNED", { x, y, size: 20, font, color: sigColor });
-          }
-        } else {
-          page.drawText("SIGNED", { x, y, size: 20, font, color: sigColor });
+      switch (type) {
+        case "typed": case "initials": {
+          const text = parseText(sig.data, sig.signatureText) || (type === "initials" ? "??" : "Signed");
+          const sz = 24;
+          page.drawText(text, { x, y, size: sz, font, color: sigColor });
+          const tw = font.widthOfTextAtSize(text, sz);
+          page.drawLine({ start: { x, y: y - 3 }, end: { x: x + tw, y: y - 3 }, thickness: 1.5, color: sigColor });
+          break;
         }
-        break;
-      }
-
-      case "stamp": {
-        // Embed the actual stamp image
-        const stampData = signature.data || signature.stampImage || signature.signatureImage;
-        if (stampData && stampData.startsWith("data:")) {
-          try {
-            const embedded = await embedImageFromDataUrl(pdfDoc, stampData);
-            const w = signature.width || 120;
-            const h = signature.height || 80;
-            page.drawImage(embedded, {
-              x,
-              y: y - h,
-              width: w,
-              height: h,
-            });
-          } catch {
-            // Fallback: stamp box
-            page.drawRectangle({
-              x: x - 2,
-              y: y - 30,
-              width: 100,
-              height: 36,
-              borderColor: sigColor,
-              borderWidth: 1.5,
-              color: rgb(0.92, 0.95, 1),
-            });
-            page.drawText("COMPANY STAMP", {
-              x: x + 4,
-              y: y - 18,
-              size: 8,
-              font,
-              color: sigColor,
-            });
-          }
-        } else {
-          // No data URL: draw placeholder box
-          page.drawRectangle({
-            x: x - 2,
-            y: y - 30,
-            width: 100,
-            height: 36,
-            borderColor: sigColor,
-            borderWidth: 1.5,
-            color: rgb(0.92, 0.95, 1),
-          });
-          page.drawText("COMPANY STAMP", {
-            x: x + 4,
-            y: y - 18,
-            size: 8,
-            font,
-            color: sigColor,
-          });
+        case "date": {
+          const dateStr = sig.dateValue || new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+          page.drawText(dateStr, { x, y, size: 12, font: fontReg, color: rgb(0.25, 0.25, 0.25) });
+          break;
         }
-        break;
-      }
-
-      case "typed": {
-        const text = parseTextFromData(signature.data, signature.signatureText) || "Signed";
-        const fontSize = 22;
-        page.drawText(text, { x, y, size: fontSize, font, color: sigColor });
-        // Underline
-        const textWidth = font.widthOfTextAtSize(text, fontSize);
-        page.drawLine({
-          start: { x, y: y - 3 },
-          end: { x: x + textWidth, y: y - 3 },
-          thickness: 1,
-          color: sigColor,
-        });
-        break;
-      }
-
-      case "initials": {
-        const text = parseTextFromData(signature.data, signature.signatureText) || "??";
-        const fontSize = 20;
-        page.drawText(text, { x, y, size: fontSize, font, color: sigColor });
-        const textWidth = font.widthOfTextAtSize(text, fontSize);
-        page.drawLine({
-          start: { x, y: y - 3 },
-          end: { x: x + textWidth, y: y - 3 },
-          thickness: 1,
-          color: sigColor,
-        });
-        break;
-      }
-
-      case "date": {
-        const dateStr = new Date().toLocaleDateString("en-US", {
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        });
-        page.drawText(dateStr, {
-          x,
-          y,
-          size: 11,
-          font: fontRegular,
-          color: rgb(0.3, 0.3, 0.3),
-        });
-        break;
-      }
-
-      case "text": {
-        const text = parseTextFromData(signature.data, signature.signatureText) || "";
-        page.drawText(text, {
-          x,
-          y,
-          size: 11,
-          font: fontRegular,
-          color: rgb(0.1, 0.1, 0.1),
-        });
-        break;
-      }
-
-      case "signature":
-      default: {
-        // Legacy fallback — try to embed image if data URL present, else text
-        const data = signature.data;
-        if (data && data.startsWith("data:")) {
-          try {
-            const embedded = await embedImageFromDataUrl(pdfDoc, data);
-            const w = signature.width || 150;
-            const h = signature.height || 60;
-            page.drawImage(embedded, { x, y: y - h, width: w, height: h });
-          } catch {
-            page.drawText("SIGNED", { x, y, size: 20, font: font, color: rgb(0, 0, 1) });
-          }
-        } else {
-          page.drawText("SIGNED", { x, y, size: 20, font: font, color: rgb(0, 0, 1) });
-          page.drawLine({
-            start: { x, y: y - 3 },
-            end: { x: x + 60, y: y - 3 },
-            thickness: 1.5,
-            color: rgb(0, 0, 0.85),
-          });
+        default: {
+          page.drawText("SIGNED", { x, y, size: 22, font, color: sigColor });
+          page.drawLine({ start: { x, y: y - 3 }, end: { x: x + 70, y: y - 3 }, thickness: 1.5, color: sigColor });
         }
-        break;
       }
     }
+
+    fs.writeFileSync(outputPath, await pdfDoc.save());
+    return outputPath;
+  };
+
+  async function embedImg(pdfDoc, dataUrl) {
+    const [header, b64] = dataUrl.split(",");
+    if (!b64) throw new Error("Invalid data URL");
+    const bytes = Buffer.from(b64, "base64");
+    if (header.includes("image/png")) return await pdfDoc.embedPng(bytes);
+    if (header.includes("image/jpeg") || header.includes("image/jpg")) return await pdfDoc.embedJpg(bytes);
+    try { return await pdfDoc.embedPng(bytes); } catch { return await pdfDoc.embedJpg(bytes); }
   }
 
-  const signedPdfBytes = await pdfDoc.save();
-  fs.writeFileSync(outputPath, signedPdfBytes);
-  return outputPath;
-};
-
-/**
- * Embed image from a base64 data URL into the PDF document.
- * Supports PNG and JPEG.
- */
-async function embedImageFromDataUrl(pdfDoc, dataUrl) {
-  const [header, base64Data] = dataUrl.split(",");
-  const imageBytes = Buffer.from(base64Data, "base64");
-  if (header.includes("image/png")) {
-    return await pdfDoc.embedPng(imageBytes);
-  } else {
-    // JPEG, WebP etc – pdf-lib only supports PNG and JPEG
-    return await pdfDoc.embedJpg(imageBytes);
+  function parseText(data, fallback) {
+    if (fallback && typeof fallback === "string") return fallback.trim();
+    if (!data || typeof data !== "string" || data.startsWith("data:")) return null;
+    if (data.includes("|")) return data.split("|")[0].trim();
+    return data.trim();
   }
-}
 
-/**
- * Parse text from stored data field.
- * Format for typed/initials: "textContent|styleId"
- */
-function parseTextFromData(data, fallback) {
-  if (fallback) return fallback.trim();
-  if (!data) return null;
-  if (typeof data === "string" && data.includes("|")) {
-    return data.split("|")[0].trim();
+  function parseHex(hex) {
+    try {
+      const c = hex.replace("#", "");
+      const r = parseInt(c.substring(0,2),16)/255, g = parseInt(c.substring(2,4),16)/255, b = parseInt(c.substring(4,6),16)/255;
+      if (isNaN(r)||isNaN(g)||isNaN(b)) throw new Error();
+      return rgb(r, g, b);
+    } catch { return rgb(0.12, 0.22, 0.56); }
   }
-  return typeof data === "string" ? data.trim() : null;
-}
 
-/**
- * Convert hex color string to pdf-lib rgb() values.
- * Defaults to navy blue if parsing fails.
- */
-function parseHexColor(hex) {
-  try {
-    const clean = hex.replace("#", "");
-    const r = parseInt(clean.substring(0, 2), 16) / 255;
-    const g = parseInt(clean.substring(2, 4), 16) / 255;
-    const b = parseInt(clean.substring(4, 6), 16) / 255;
-    return rgb(r, g, b);
-  } catch {
-    return rgb(0.12, 0.22, 0.56);
-  }
-}
-
-module.exports = { generateSignedPdf };
+  module.exports = { generateSignedPdf };
+  

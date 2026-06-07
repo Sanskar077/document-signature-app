@@ -1,83 +1,55 @@
 const express = require("express");
-const cors = require("cors");
+  const cors = require("cors");
+  const path = require("path");
+  const fs = require("fs");
 
-const authRoutes = require("./routes/authRoutes");
-const documentRoutes = require("./routes/documentRoutes");
-const protect = require("./middleware/authMiddleware");
-const signatureRoutes = require("./routes/signatureRoutes");
-const publicSignatureRoutes = require("./routes/publicSignatureRoutes");
-const recipientRoutes = require("./routes/recipientRoutes");
-const auditRoutes = require("./routes/auditRoutes");
+  const authRoutes = require("./routes/authRoutes");
+  const documentRoutes = require("./routes/documentRoutes");
+  const signatureRoutes = require("./routes/signatureRoutes");
+  const publicSignatureRoutes = require("./routes/publicSignatureRoutes");
+  const recipientRoutes = require("./routes/recipientRoutes");
+  const auditRoutes = require("./routes/auditRoutes");
 
-const app = express();
+  const app = express();
 
-// ── Core Middleware ──
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+  app.use(cors({ origin: process.env.FRONTEND_URL || "*", credentials: true }));
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// ── Static Files ──
-app.use("/uploads", express.static("uploads"));
-app.use("/signed", express.static("signed"));
+  // Static — absolute paths
+  const UPLOADS_DIR = path.join(__dirname, "uploads");
+  const SIGNED_DIR  = path.join(__dirname, "signed");
+  if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  if (!fs.existsSync(SIGNED_DIR))  fs.mkdirSync(SIGNED_DIR, { recursive: true });
+  app.use("/uploads", express.static(UPLOADS_DIR));
+  app.use("/signed",  express.static(SIGNED_DIR));
 
-// ── Public Routes ──
-app.use("/api/public-sign", publicSignatureRoutes);
+  app.use("/api/public-sign", publicSignatureRoutes);
+  app.get("/", (req, res) => res.json({ success: true, message: "SignFlow API v2", version: "2.0.0" }));
+  app.use("/api/auth",       authRoutes);
+  app.use("/api/docs",       documentRoutes);
+  app.use("/api/signatures", signatureRoutes);
+  app.use("/api/recipients", recipientRoutes);
+  app.use("/api/audit",      auditRoutes);
+  app.use((req, res) => res.status(404).json({ success: false, message: "Route not found" }));
 
-// ── Home Route ──
-app.get("/", (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "SignFlow API v2 Running",
-    routes: [
-      "POST /api/auth/register",
-      "POST /api/auth/login",
-      "GET  /api/docs",
-      "POST /api/docs/upload",
-      "GET  /api/docs/:id",
-      "POST /api/docs/:id/finalize",
-      "POST /api/signatures",
-      "GET  /api/signatures/:id",
-      "POST /api/public-sign/:id",
-      "GET  /api/public-sign/:token",
-      "POST /api/public-sign/:token/sign",
-      "GET  /api/recipients/:documentId",
-      "POST /api/recipients/:documentId",
-      "DELETE /api/recipients/:documentId/:recipientId",
-      "GET  /api/audit/:documentId",
-    ],
+  // Global error handler
+  // eslint-disable-next-line no-unused-vars
+  app.use((err, req, res, next) => {
+    console.error("[ERROR]", err.stack || err.message);
+    if (err.name === "ValidationError") {
+      return res.status(400).json({ success: false, message: Object.values(err.errors).map(e => e.message).join(", ") });
+    }
+    if (err.code === 11000) {
+      const field = Object.keys(err.keyValue || {})[0] || "field";
+      return res.status(409).json({ success: false, message: `${field} already exists` });
+    }
+    if (err.name === "CastError") return res.status(400).json({ success: false, message: "Invalid ID format" });
+    if (err.name === "JsonWebTokenError") return res.status(401).json({ success: false, message: "Invalid token" });
+    if (err.name === "TokenExpiredError") return res.status(401).json({ success: false, message: "Session expired" });
+    if (err.code === "LIMIT_FILE_SIZE") return res.status(413).json({ success: false, message: "File too large. Max 20 MB." });
+    res.status(err.statusCode || 500).json({ success: false, message: err.message || "An unexpected error occurred." });
   });
-});
 
-// ── Auth Routes ──
-app.use("/api/auth", authRoutes);
-
-// ── Document Routes ──
-app.use("/api/docs", documentRoutes);
-
-// ── Signature Routes ──
-app.use("/api/signatures", signatureRoutes);
-
-// ── Recipient Routes (NEW) ──
-app.use("/api/recipients", recipientRoutes);
-
-// ── Audit Routes (NEW) ──
-app.use("/api/audit", auditRoutes);
-
-// ── Protected Test Route ──
-app.get("/api/protected", protect, (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "Protected route working",
-    user: req.user,
-  });
-});
-
-// ── 404 Handler ──
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: "Route not found",
-  });
-});
-
-module.exports = app;
+  module.exports = app;
+  
