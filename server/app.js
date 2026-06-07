@@ -12,7 +12,22 @@ const auditRoutes = require("./routes/auditRoutes");
 
 const app = express();
 
-app.use(cors({ origin: process.env.CLIENT_URL || "*", credentials: true }));
+// CORS — strips trailing slash before comparing so both
+// "https://example.com" and "https://example.com/" match
+const allowedOrigin = (process.env.CLIENT_URL || "").replace(/\/$/, "");
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow server-to-server requests (no origin) or if no CLIENT_URL set
+      if (!allowedOrigin || !origin) return callback(null, true);
+      if (origin.replace(/\/$/, "") === allowedOrigin) return callback(null, true);
+      callback(new Error(`CORS: origin ${origin} not allowed`));
+    },
+    credentials: true,
+  })
+);
+
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
@@ -24,13 +39,18 @@ if (!fs.existsSync(SIGNED_DIR)) fs.mkdirSync(SIGNED_DIR, { recursive: true });
 app.use("/uploads", express.static(UPLOADS_DIR));
 app.use("/signed", express.static(SIGNED_DIR));
 
-app.use("/api/public-sign", publicSignatureRoutes);
+// Health check
 app.get("/", (req, res) => res.json({ success: true, message: "SignFlow API v2", version: "2.0.0" }));
+
+// API routes — specific public-sign sub-routes registered BEFORE the wildcard /:id route
 app.use("/api/auth", authRoutes);
 app.use("/api/docs", documentRoutes);
 app.use("/api/signatures", signatureRoutes);
+app.use("/api/public-sign", publicSignatureRoutes);
 app.use("/api/recipients", recipientRoutes);
 app.use("/api/audit", auditRoutes);
+
+// 404 handler
 app.use((req, res) => res.status(404).json({ success: false, message: "Route not found" }));
 
 // Global error handler
