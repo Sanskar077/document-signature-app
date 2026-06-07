@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
   import { useParams, Link } from "react-router-dom";
   import axios from "axios";
-  import { DndContext } from "@dnd-kit/core";
   import { Document, Page, pdfjs } from "react-pdf";
   import SignatureModal, { type SignatureResult } from "../components/tabs/SignatureModal";
   import LoadingSpinner from "../components/LoadingSpinner";
@@ -19,12 +18,12 @@ import { useEffect, useState } from "react";
     const [currentPage, setCurrentPage] = useState(1);
     const [modalOpen, setModalOpen] = useState(false);
     const [sigResult, setSigResult] = useState<SignatureResult | null>(null);
-    const [position, setPosition] = useState({ x: 80, y: 80 });
+    const [position, _setPosition] = useState({ x: 80, y: 80 });
     const [name, setName] = useState(""); const [email, setEmail] = useState("");
     const [saving, setSaving] = useState(false); const [saved, setSaved] = useState(false);
     const [error, setError] = useState(""); const [loading, setLoading] = useState(true);
     const [toast, setToast] = useState<string | null>(null);
-    const [pdfW, setPdfW] = useState(700); const [pdfH, setPdfH] = useState(0);
+    const [pdfW, _setPdfW] = useState(700); const [pdfH, setPdfH] = useState(0);
 
     const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 3000); };
 

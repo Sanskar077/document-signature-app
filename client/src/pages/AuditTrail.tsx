@@ -149,15 +149,15 @@ export default function AuditTrail() {
                         {Object.keys(m).length > 0 && (
                           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                             {typeof m.originalName === "string" && (
-                              <MetadataChip label="file" value={m.originalName} />
+                              <MetadataChip label="file" value={m.originalName as string} />
                             )}
 
                             {typeof m.fileName === "string" && !m.originalName && (
-                              <MetadataChip label="file" value={m.fileName} />
+                              <MetadataChip label="file" value={m.fileName as string} />
                             )}
 
                             {typeof m.role === "string" && (
-                              <MetadataChip label="role" value={m.role} />
+                              <MetadataChip label="role" value={m.role as string} />
                             )}
 
                             {typeof m.signatureCount === "number" && (
@@ -168,7 +168,7 @@ export default function AuditTrail() {
                             )}
 
                             {typeof m.outputFileName === "string" && (
-                              <MetadataChip label="output" value={m.outputFileName} />
+                              <MetadataChip label="output" value={m.outputFileName as string} />
                             )}
                           </div>
                         )}

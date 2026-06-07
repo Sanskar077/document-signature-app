@@ -2,7 +2,7 @@ import { DndContext, useDraggable } from "@dnd-kit/core";
   import { CSS } from "@dnd-kit/utilities";
   import { useState, useRef, useEffect, useCallback } from "react";
   import axios from "axios";
-  import { Link, useNavigate, useParams } from "react-router-dom";
+  import { Link, useParams } from "react-router-dom";
   import { useAuth } from "../context/AuthContext";
   import SignatureModal, { type SignatureResult } from "../components/tabs/SignatureModal";
   import { Document, Page, pdfjs } from "react-pdf";
@@ -82,7 +82,6 @@ import { DndContext, useDraggable } from "@dnd-kit/core";
   export default function SignaturePlacement() {
     const { id: documentId } = useParams<{ id: string }>();
     const { token } = useAuth();
-    const navigate = useNavigate();
 
     const [docInfo, setDocInfo] = useState<{ fileName: string; originalName: string } | null>(null);
     const [docLoading, setDocLoading] = useState(true);
@@ -173,7 +172,6 @@ import { DndContext, useDraggable } from "@dnd-kit/core";
     };
 
     const relPos = computeRel();
-    const scaledW = pdfPageWidth * zoom;
 
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--bg-primary)", overflow: "hidden" }}>

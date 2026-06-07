@@ -18,12 +18,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
     updatedAt: string;
   };
 
-  type AuditEvent = {
-    _id: string;
-    action: string;
-    createdAt: string;
-    metadata?: { originalName?: string; fileName?: string };
-  };
+  // AuditEvent type removed (unused)
 
   function formatSize(b: number) {
     if (b < 1024) return b + " B";
@@ -67,11 +62,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
     );
   }
 
-  const ACTION_ICONS: Record<string, string> = {
-    document_uploaded:  "📤", link_generated: "🔗", signature_placed: "✍️",
-    document_finalized: "📥", recipient_added: "👤", recipient_removed: "🗑",
-    link_viewed: "👁",
-  };
+  // ACTION_ICONS removed (unused)
 
   export default function Dashboard() {
     const { token, user } = useAuth();
@@ -88,8 +79,8 @@ import { useEffect, useRef, useState, useCallback } from "react";
     const [actions, setActions] = useState<Record<string, boolean>>({});
     const [shareLinks, setShareLinks] = useState<Record<string, string>>({});
     const [finalizeResults, setFinalizeResults] = useState<Record<string, string>>({});
-    const [recentActivity, setRecentActivity] = useState<AuditEvent[]>([]);
-    const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+    // recentActivity state removed (unused)
+    // deleteConfirm state removed (unused)
 
     const authH = { Authorization: `Bearer ${token}` };
 
@@ -106,12 +97,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
       finally { setLoading(false); }
     }, [token]);
 
-    const fetchActivity = useCallback(async () => {
-      try {
-        // Get activity from the most recent documents' audit logs
-        // We'll show recent global activity
-      } catch { /* silent */ }
-    }, []);
+    // fetchActivity removed (unused)
 
     useEffect(() => { fetchDocs(); }, [fetchDocs]);
 

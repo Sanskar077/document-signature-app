@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
 
 type Props = {
+  companyName?: string;
   onSave: (dataUrl: string) => void;
 };
 
-export default function StampTab({ onSave }: Props) {
+export default function StampTab({ onSave, companyName: _companyName }: Props) {
   const [preview, setPreview] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string>("");
   const inputRef = useRef<HTMLInputElement>(null);
